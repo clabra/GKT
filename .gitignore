@@ -134,3 +134,6 @@ logs/*
 
 # Visual Studio
 .vscode/
+
+# Wandb run logs
+wandb/

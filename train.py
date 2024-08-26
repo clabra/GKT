@@ -24,13 +24,15 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--no-cuda', action='store_false', default=True, help='Disables CUDA training.')
 parser.add_argument('--seed', type=int, default=42, help='Random seed.')
 parser.add_argument('--data-dir', type=str, default='data', help='Data dir for loading input data.')
-parser.add_argument('--data-file', type=str, default='assistment_test15.csv', help='Name of input data file.')
+#parser.add_argument('--data-file', type=str, default='assistment_test15.csv', help='Name of input data file.')
+parser.add_argument('--data-file', type=str, default='skill_builder_data.csv', help='Name of input data file.')
 parser.add_argument('--save-dir', type=str, default='logs', help='Where to save the trained model, leave empty to not save anything.')
 parser.add_argument('-graph-save-dir', type=str, default='graphs', help='Dir for saving concept graphs.')
-parser.add_argument('--load-dir', type=str, default='', help='Where to load the trained model if finetunning. ' + 'Leave empty to train from scratch')
+#parser.add_argument('--load_dir', type=str, default='', help='Where to load the trained model if finetunning. ' + 'Leave empty to train from scratch')
+parser.add_argument('--load_dir', type=str, default='logs/expDKT', help='Where to load the trained model if finetunning. ' + 'Leave empty to train from scratch')
 parser.add_argument('--dkt-graph-dir', type=str, default='dkt-graph', help='Where to load the pretrained dkt graph.')
 parser.add_argument('--dkt-graph', type=str, default='dkt_graph.txt', help='DKT graph data file name.')
-parser.add_argument('--model', type=str, default='GKT', help='Model type to use, support GKT and DKT.')
+parser.add_argument('--model', type=str, default='DKT', help='Model type to use, support GKT and DKT.')
 parser.add_argument('--hid-dim', type=int, default=32, help='Dimension of hidden knowledge states.')
 parser.add_argument('--emb-dim', type=int, default=32, help='Dimension of concept embedding.')
 parser.add_argument('--attn-dim', type=int, default=32, help='Dimension of multi-head attention layers.')
@@ -55,8 +57,8 @@ parser.add_argument('--shuffle', type=bool, default=True, help='Whether to shuff
 parser.add_argument('--lr', type=float, default=0.001, help='Initial learning rate.')
 parser.add_argument('--lr-decay', type=int, default=200, help='After how epochs to decay LR by a factor of gamma.')
 parser.add_argument('--gamma', type=float, default=0.5, help='LR decay factor.')
-parser.add_argument('--test', type=bool, default=False, help='Whether to test for existed model.')
-parser.add_argument('--test-model-dir', type=str, default='logs/expDKT', help='Existed model file dir.')
+parser.add_argument('--test', type=bool, default=True, help='Whether to test for existed model.')
+parser.add_argument('--wandb', type=bool, default=True, help='Whether to send data to wandb.')
 
 
 
@@ -75,6 +77,10 @@ if args.cuda:
     torch.backends.cudnn.deterministic = True
 
 res_len = 2 if args.binary else args.result_type
+
+if args.wandb: 
+    import wandb
+    wandb.init(project="GKT", entity="clabra")
 
 # Save model and meta-data. Always saves in a new sub-folder.
 log = None
@@ -146,8 +152,8 @@ if args.load_dir:
     else:
         raise NotImplementedError(args.model + ' model is not implemented!')
     model_file = os.path.join(args.load_dir, model_file_name + '.pt')
-    optimizer_file = os.path.join(save_dir, model_file_name + '-Optimizer.pt')
-    scheduler_file = os.path.join(save_dir, model_file_name + '-Scheduler.pt')
+    optimizer_file = os.path.join(args.load_dir, model_file_name + '-Optimizer.pt')
+    scheduler_file = os.path.join(args.load_dir, model_file_name + '-Scheduler.pt')
     model.load_state_dict(torch.load(model_file))
     optimizer.load_state_dict(torch.load(optimizer_file))
     scheduler.load_state_dict(torch.load(scheduler_file))
@@ -245,14 +251,19 @@ def train(epoch, best_val_loss):
             if auc != -1 and acc != -1:
                 auc_val.append(auc)
                 acc_val.append(acc)
-
             loss = loss_kt
+
             if args.model == 'GKT' and args.graph_type == 'VAE':
                 loss_vae = vae_loss(ec_list, rec_list, z_prob_list)
                 loss_vae = float(loss_vae.cpu().detach().numpy())
                 vae_val.append(loss_vae)
                 loss = loss_kt + loss_vae
             loss_val.append(loss)
+
+            if args.wandb: 
+                wandb.log({"auc": auc, "acc": acc, "loss": loss})
+
+
             del loss
     if args.model == 'GKT' and args.graph_type == 'VAE':
         print('Epoch: {:04d}'.format(epoch),
@@ -328,6 +339,8 @@ def test():
     auc_test = []
     acc_test = []
 
+
+
     if graph_model is not None:
         graph_model.eval()
     model.eval()
@@ -366,10 +379,23 @@ def test():
               'vae_test: {:.10f}'.format(np.mean(vae_test)),
               'auc_test: {:.10f}'.format(np.mean(auc_test)),
               'acc_test: {:.10f}'.format(np.mean(acc_test)))
+        if args.wandb: 
+            auc_test_mean = np.mean(auc_test)
+            acc_test_mean = np.mean(acc_test)
+            loss_test_mean = np.mean(loss_test)
+            kt_test_mean = np.mean(kt_test)
+            vae_test_mean = np.mean(vae_test)
+            wandb.log({"auc_test": auc_test_mean, "acc_test": acc_test_mean, "loss_test": loss_test_mean, "kt_test": kt_test_mean, "vae_test": vae_test_mean})
     else:
         print('loss_test: {:.10f}'.format(np.mean(loss_test)),
               'auc_test: {:.10f}'.format(np.mean(auc_test)),
               'acc_test: {:.10f}'.format(np.mean(acc_test)))
+        if args.wandb: 
+            auc_test_mean = np.mean(auc_test)
+            acc_test_mean = np.mean(acc_test)
+            loss_test_mean = np.mean(loss_test)
+            wandb.log({"auc_test": auc_test_mean, "acc_test": acc_test_mean, "loss_test": loss_test_mean})
+
     if args.save_dir:
         print('--------------------------------', file=log)
         print('--------Testing-----------------', file=log)
