@@ -28,8 +28,8 @@ parser.add_argument('--data-dir', type=str, default='data', help='Data dir for l
 parser.add_argument('--data-file', type=str, default='skill_builder_data.csv', help='Name of input data file.')
 parser.add_argument('--save-dir', type=str, default='logs', help='Where to save the trained model, leave empty to not save anything.')
 parser.add_argument('-graph-save-dir', type=str, default='graphs', help='Dir for saving concept graphs.')
-#parser.add_argument('--load_dir', type=str, default='', help='Where to load the trained model if finetunning. ' + 'Leave empty to train from scratch')
-parser.add_argument('--load_dir', type=str, default='logs/expDKT', help='Where to load the trained model if finetunning. ' + 'Leave empty to train from scratch')
+parser.add_argument('--load_dir', type=str, default='', help='Where to load the trained model if finetunning. ' + 'Leave empty to train from scratch')
+#parser.add_argument('--load_dir', type=str, default='logs/expDKT', help='Where to load the trained model if finetunning. ' + 'Leave empty to train from scratch')
 parser.add_argument('--dkt-graph-dir', type=str, default='dkt-graph', help='Where to load the pretrained dkt graph.')
 parser.add_argument('--dkt-graph', type=str, default='dkt_graph.txt', help='DKT graph data file name.')
 parser.add_argument('--model', type=str, default='DKT', help='Model type to use, support GKT and DKT.')
@@ -57,7 +57,7 @@ parser.add_argument('--shuffle', type=bool, default=True, help='Whether to shuff
 parser.add_argument('--lr', type=float, default=0.001, help='Initial learning rate.')
 parser.add_argument('--lr-decay', type=int, default=200, help='After how epochs to decay LR by a factor of gamma.')
 parser.add_argument('--gamma', type=float, default=0.5, help='LR decay factor.')
-parser.add_argument('--test', type=bool, default=True, help='Whether to test for existed model.')
+parser.add_argument('--test', type=bool, default=False, help='Whether to test for existed model.')
 parser.add_argument('--wandb', type=bool, default=True, help='Whether to send data to wandb.')
 
 
@@ -214,9 +214,17 @@ def train(epoch, best_val_loss):
                 vae_train.append(float(loss_vae.cpu().detach().numpy()))
             print('batch idx: ', batch_idx, 'loss kt: ', loss_kt.item(), 'loss vae: ', loss_vae.item(), 'auc: ', auc, 'acc: ', acc, end=' ')
             loss = loss_kt + loss_vae
+
+            if args.wandb: 
+                wandb.log({"auc_train": auc, "acc_train": acc, "loss_train": loss, "loss_kt_train": loss_kt, "loss_vae_train": loss_vae})
+            
         else:
             loss = loss_kt
             print('batch idx: ', batch_idx, 'loss kt: ', loss_kt.item(), 'auc: ', auc, 'acc: ', acc, end=' ')
+
+            if args.wandb: 
+                wandb.log({"auc_train": auc, "acc_train": acc, "loss_train": loss})
+
         loss_train.append(float(loss.cpu().detach().numpy()))
         loss.backward()
         optimizer.step()
@@ -261,8 +269,7 @@ def train(epoch, best_val_loss):
             loss_val.append(loss)
 
             if args.wandb: 
-                wandb.log({"auc": auc, "acc": acc, "loss": loss})
-
+                wandb.log({"auc_val": auc, "acc_val": acc "loss_val": loss})
 
             del loss
     if args.model == 'GKT' and args.graph_type == 'VAE':
@@ -278,6 +285,13 @@ def train(epoch, best_val_loss):
               'auc_val: {:.10f}'.format(np.mean(auc_val)),
               'acc_val: {:.10f}'.format(np.mean(acc_val)),
               'time: {:.4f}s'.format(time.time() - t))
+        
+        if args.wandb: 
+            auc_train_mean = np.mean(auc_train)
+            acc_train_mean = np.mean(acc_train)
+            loss_train_mean = np.mean(loss_train)
+            wandb.log({"auc_train": auc_train_mean, "acc_train": acc_train_mean, "loss_train": loss_train_mean})
+
     else:
         print('Epoch: {:04d}'.format(epoch),
               'loss_train: {:.10f}'.format(np.mean(loss_train)),
@@ -287,6 +301,9 @@ def train(epoch, best_val_loss):
               'auc_val: {:.10f}'.format(np.mean(auc_val)),
               'acc_val: {:.10f}'.format(np.mean(acc_val)),
               'time: {:.4f}s'.format(time.time() - t))
+        
+
+
     if args.save_dir and np.mean(loss_val) < best_val_loss:
         print('Best model so far, saving...')
         torch.save(model.state_dict(), model_file)
