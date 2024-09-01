@@ -24,8 +24,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--no-cuda', action='store_false', default=True, help='Disables CUDA training.')
 parser.add_argument('--seed', type=int, default=42, help='Random seed.')
 parser.add_argument('--data-dir', type=str, default='data', help='Data dir for loading input data.')
-#parser.add_argument('--data-file', type=str, default='assistment_test15.csv', help='Name of input data file.')
-parser.add_argument('--data-file', type=str, default='skill_builder_data.csv', help='Name of input data file.')
+parser.add_argument('--data-file', type=str, default='assistment_test15.csv', help='Name of input data file.')
+#parser.add_argument('--data-file', type=str, default='skill_builder_data.csv', help='Name of input data file.')
 parser.add_argument('--save-dir', type=str, default='logs', help='Where to save the trained model, leave empty to not save anything.')
 parser.add_argument('-graph-save-dir', type=str, default='graphs', help='Dir for saving concept graphs.')
 parser.add_argument('--load_dir', type=str, default='', help='Where to load the trained model if finetunning. ' + 'Leave empty to train from scratch')
@@ -180,6 +180,9 @@ if args.cuda:
 
 
 def train(epoch, best_val_loss):
+    # 
+    # Train for each epoch
+    # 
     t = time.time()
     loss_train = []
     kt_train = []
@@ -215,15 +218,9 @@ def train(epoch, best_val_loss):
             print('batch idx: ', batch_idx, 'loss kt: ', loss_kt.item(), 'loss vae: ', loss_vae.item(), 'auc: ', auc, 'acc: ', acc, end=' ')
             loss = loss_kt + loss_vae
 
-            if args.wandb: 
-                wandb.log({"auc_train": auc, "acc_train": acc, "loss_train": loss, "loss_kt_train": loss_kt, "loss_vae_train": loss_vae})
-            
         else:
             loss = loss_kt
             print('batch idx: ', batch_idx, 'loss kt: ', loss_kt.item(), 'auc: ', auc, 'acc: ', acc, end=' ')
-
-            if args.wandb: 
-                wandb.log({"auc_train": auc, "acc_train": acc, "loss_train": loss})
 
         loss_train.append(float(loss.cpu().detach().numpy()))
         loss.backward()
@@ -233,6 +230,9 @@ def train(epoch, best_val_loss):
         del loss
         print('cost time: ', str(time.time() - t1))
 
+    # 
+    # Evaluation for each epoch
+    # 
     loss_val = []
     kt_val = []
     vae_val = []
@@ -268,9 +268,6 @@ def train(epoch, best_val_loss):
                 loss = loss_kt + loss_vae
             loss_val.append(loss)
 
-            if args.wandb: 
-                wandb.log({"auc_val": auc, "acc_val": acc "loss_val": loss})
-
             del loss
     if args.model == 'GKT' and args.graph_type == 'VAE':
         print('Epoch: {:04d}'.format(epoch),
@@ -285,12 +282,6 @@ def train(epoch, best_val_loss):
               'auc_val: {:.10f}'.format(np.mean(auc_val)),
               'acc_val: {:.10f}'.format(np.mean(acc_val)),
               'time: {:.4f}s'.format(time.time() - t))
-        
-        if args.wandb: 
-            auc_train_mean = np.mean(auc_train)
-            acc_train_mean = np.mean(acc_train)
-            loss_train_mean = np.mean(loss_train)
-            wandb.log({"auc_train": auc_train_mean, "acc_train": acc_train_mean, "loss_train": loss_train_mean})
 
     else:
         print('Epoch: {:04d}'.format(epoch),
@@ -301,9 +292,14 @@ def train(epoch, best_val_loss):
               'auc_val: {:.10f}'.format(np.mean(auc_val)),
               'acc_val: {:.10f}'.format(np.mean(acc_val)),
               'time: {:.4f}s'.format(time.time() - t))
-        
-
-
+               
+    if args.wandb: 
+        wandb.log({
+            'loss_val': np.mean(loss_val),
+            'auc_val': np.mean(auc_val), 
+            'acc_val': np.mean(acc_val)
+        })
+    
     if args.save_dir and np.mean(loss_val) < best_val_loss:
         print('Best model so far, saving...')
         torch.save(model.state_dict(), model_file)
@@ -355,8 +351,6 @@ def test():
     vae_test = []
     auc_test = []
     acc_test = []
-
-
 
     if graph_model is not None:
         graph_model.eval()
@@ -453,6 +447,8 @@ if args.test is False:
     if args.save_dir:
         print("Best Epoch: {:04d}".format(best_epoch), file=log)
         log.flush()
+    if args.wandb:
+        wandb.log({'loss_eval_best': best_val_loss})
 
 test()
 if log is not None:
