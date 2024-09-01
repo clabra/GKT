@@ -294,11 +294,15 @@ def train(epoch, best_val_loss):
               'time: {:.4f}s'.format(time.time() - t))
                
     if args.wandb: 
+        auc_val_mean = np.mean(auc_val)
+        acc_val_mean = np.mean(acc_val)
+        loss_val_mean = np.mean(loss_val)
         wandb.log({
-            'loss_val': np.mean(loss_val),
-            'auc_val': np.mean(auc_val), 
-            'acc_val': np.mean(acc_val)
+            "loss_val": np.mean(loss_val_mean),
+            "auc_val": np.mean(auc_val_mean), 
+            "acc_val": np.mean(acc_val_mean)
         })
+ 
     
     if args.save_dir and np.mean(loss_val) < best_val_loss:
         print('Best model so far, saving...')
